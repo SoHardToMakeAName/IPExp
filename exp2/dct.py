@@ -79,7 +79,7 @@ class DCT:
                         break
                     s += 1
                 # 对保留前k个系数的patch做逆DCT
-                f[i:i + N, j:j + N] = np.matmul(np.matmul(A, patch_), A.transpose())
+                f[i:i + N, j:j + N] = np.matmul(np.matmul(A.transpose(), patch_), A)
         f = f.round()
         figure, ax = plt.subplots(1, 2)
         basis = np.matmul(A.transpose().reshape((-1, 1), order='F'), A.reshape((1, -1)))
@@ -108,4 +108,4 @@ def test(file_path):
         psnr = compute_psnr(recon, y_data[0:recon.shape[0], 0:recon.shape[1]])
         print("top-{}, psnr={}".format(k, psnr))
 
-test("../exp1/lena512color.bmp")
+# test("../exp1/lena512color.bmp")
