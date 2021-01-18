@@ -3,8 +3,10 @@ from exp1.converter import Converter
 from exp2.dct import compute_psnr
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import convolve2d
+import pywt
 from skimage.measure import compare_ssim
+from scipy.ndimage.interpolation import rotate
+from scipy.ndimage import gaussian_filter
 
 class Operations:
     def __init__(self):
@@ -172,7 +174,58 @@ class Operations:
                 res[i, j] = mdn
         return res
 
+    @staticmethod
+    def edge_detect(gray, patten='Sobel', mode='v'):
+        patten_collections = {'Sobel': {'v': np.array([[-1,  0,  1],
+                                                       [-2,  0,  2],
+                                                       [-1,  0,  1]]),
+                                        'h': np.array([[-1, -2, -1],
+                                                       [ 0,  0,  0],
+                                                       [ 1,  2,  1]])}
+                              }
+        return Operations.convolve2d(gray, patten_collections[patten][mode], 'same')
 
+    @staticmethod
+    def dwt_denoising(gray):
+        coeffs = pywt.wavedec2(gray, 'db1', level=2)
+        ths = [23.38, 10.12]
+        for i in range(1, len(coeffs)):
+            coeffs[i] = tuple([pywt.threshold(v, ths[i-1], 'hard') for v in coeffs[i]])
+        return pywt.waverec2(coeffs, 'db1')
+
+    @staticmethod
+    def thresholing_binarize(gray, threshold):
+        img_ = gray.copy()
+        new_im = np.zeros_like(img_, dtype=bool)
+
+        for i in range(img_.shape[0]):
+            for j in range(img_.shape[1]):
+                new_im[i, j] = True if img_[i, j] >= threshold else False
+
+        return new_im
+
+    @staticmethod
+    def half_tone(gray):
+        m = np.array([[[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                      [[0, 1, 0], [0, 0, 0], [0, 0, 0]],
+                      [[0, 1, 0], [0, 0, 0], [0, 0, 1]],
+                      [[1, 1, 0], [0, 0, 0], [0, 0, 1]],
+                      [[1, 1, 0], [0, 0, 0], [1, 0, 1]],
+                      [[1, 1, 1], [0, 0, 0], [1, 0, 1]],
+                      [[1, 1, 1], [0, 0, 1], [1, 0, 1]],
+                      [[1, 1, 1], [0, 0, 1], [1, 1, 1]],
+                      [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
+                      [[1, 1, 1], [1, 1, 1], [1, 1, 1]]])
+        m = m * 256
+        h, w = gray.shape
+        half_img = np.zeros((3*h, 3*w))
+        step = int(np.ceil(256 / 10))
+        img_ten = np.fix(gray / step).astype(np.uint8)
+        for i in range(h):
+            for j in range(w):
+                gray_level = img_ten[i, j]
+                half_img[3*i:3*(i+1), 3*j:3*(j+1)] = m[gray_level]
+        return half_img
 
 
 def compute_ssim(im1, im2):
@@ -185,11 +238,12 @@ def compute_ssim(im1, im2):
 def test(file_path):
     img = Bitmap(file_path)
     rgb_data = img.get_data()
-    test_data = Converter.rgb2ycbcr(rgb_data)[:, :, 0]
+    test_data = np.mean(rgb_data, axis=-1).astype(np.uint8)
     # test_data_1 = np.ceil(test_data / 255.0 * 100).astype(np.uint8)
     # Operations.hist_normalization(test_data_1)
     # Operations.hist_equalization(test_data_1)
-    # img_g = Operations.add_guassian_noise(test_data, 25)
+
+    img_g = Operations.add_guassian_noise(test_data, 25)
     # img_g_filtered = Operations.mean_filter(test_data, 3)
     # plt.subplot(1, 2, 1)
     # plt.imshow(img_g, cmap=plt.cm.gray)
@@ -198,14 +252,56 @@ def test(file_path):
     # plt.show()
     # print("Mean Filter: PSNR={}, SSIM={}".format(compute_psnr(img_g, img_g_filtered),
     #                                              compare_ssim(img_g, img_g_filtered)))
-    img_s = Operations.add_salty_noise(test_data, 0.9)
-    img_s_filtered = Operations.median_filter(img_s, 3)
+
+    # img_s = Operations.add_salty_noise(test_data, 0.9)
+    # img_s_filtered = Operations.median_filter(img_s, 3)
+    # plt.subplot(1, 2, 1)
+    # plt.imshow(img_s, cmap=plt.cm.gray)
+    # plt.subplot(1, 2, 2)
+    # plt.imshow(img_s_filtered, cmap=plt.cm.gray)
+    # plt.show()
+    # print("Mean Filter: PSNR={}, SSIM={}".format(compute_psnr(img_s, img_s_filtered),
+    #                                              compare_ssim(img_s, img_s_filtered)))
+
+    # img_wavelet = Operations.dwt_denoising(img_g)
+    # plt.subplot(1, 2, 1)
+    # plt.imshow(img_g, cmap=plt.cm.gray)
+    # plt.title("Noisy Image")
+    # plt.subplot(1, 2, 2)
+    # plt.imshow(img_wavelet, cmap=plt.cm.gray)
+    # plt.title("Reconstructed Image")
+    # plt.show()
+
+    # edge_v = Operations.edge_detect(test_data, 'Sobel', 'v')
+    # edge_h = Operations.edge_detect(test_data, 'Sobel', 'h')
+    # plt.subplot(1, 3, 1)
+    # plt.imshow(test_data, cmap=plt.cm.gray)
+    # plt.title("Original Image")
+    # plt.subplot(1, 3, 2)
+    # plt.imshow(edge_h, cmap=plt.cm.gray)
+    # plt.title("H Edges")
+    # plt.subplot(1, 3, 3)
+    # plt.imshow(edge_v, cmap=plt.cm.gray)
+    # plt.title("V Edges")
+    # plt.show()
+
+    # bi_img = Operations.thresholing_binarize(test_data, 125)
+    # plt.subplot(1, 2, 1)
+    # plt.imshow(test_data, cmap=plt.cm.gray)
+    # plt.title("Original Image")
+    # plt.subplot(1, 2, 2)
+    # plt.imshow(bi_img, cmap=plt.cm.gray)
+    # plt.title("Binary Image")
+    # plt.show()
+
+    half_img = Operations.half_tone(test_data)
     plt.subplot(1, 2, 1)
-    plt.imshow(img_s, cmap=plt.cm.gray)
+    plt.imshow(test_data, cmap=plt.cm.gray)
+    plt.title("Original Image")
     plt.subplot(1, 2, 2)
-    plt.imshow(img_s_filtered, cmap=plt.cm.gray)
+    plt.imshow(half_img, cmap=plt.cm.gray)
+    plt.title("Half-tone Image")
     plt.show()
-    print("Mean Filter: PSNR={}, SSIM={}".format(compute_psnr(img_s, img_s_filtered),
-                                                 compare_ssim(img_s, img_s_filtered)))
+
 
 test("../exp1/lena512color.bmp")
